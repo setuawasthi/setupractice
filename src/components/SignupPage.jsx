@@ -13,7 +13,7 @@ export default function SignupPage({ onSwitch }) {
 
   const createUser = useMutation(api.auth.createUser);
   const createSession = useMutation(api.auth.createSession);
-  const setPassword = useMutation(api.auth.setPassword);
+  const savePassword = useMutation(api.auth.setPassword);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -29,7 +29,7 @@ export default function SignupPage({ onSwitch }) {
 
       // Store password (simple hash for demo)
       const hashed = await hashPassword(password);
-      await setPassword({ userId, password: hashed });
+      await savePassword({ userId, password: hashed });
 
       const token = Array.from(crypto.getRandomValues(new Uint8Array(32)))
         .map((b) => b.toString(16).padStart(2, "0"))
