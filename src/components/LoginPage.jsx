@@ -13,6 +13,7 @@ export default function LoginPage({ onSwitch }) {
 
   const createSession = useMutation(api.auth.createSession);
   const createUser = useMutation(api.auth.createUser);
+  const verifyPassword = useMutation(api.auth.verifyPassword);
   const userByEmail = useQuery(
     api.auth.findUserByEmail,
     email ? { email } : "skip"
@@ -26,6 +27,14 @@ export default function LoginPage({ onSwitch }) {
     try {
       if (!userByEmail) {
         setError("No account found with this email.");
+        setIsLoading(false);
+        return;
+      }
+
+      const hashed = await hashPassword(password);
+      const valid = await verifyPassword({ userId: userByEmail._id, password: hashed });
+      if (!valid) {
+        setError("Incorrect password.");
         setIsLoading(false);
         return;
       }
@@ -48,6 +57,14 @@ export default function LoginPage({ onSwitch }) {
       setIsLoading(false);
     }
   };
+
+  async function hashPassword(pw) {
+    const encoder = new TextEncoder();
+    const data = encoder.encode(pw);
+    const hashBuffer = await crypto.subtle.digest("SHA-256", data);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
+  }
 
   const handleOAuth = async (provider) => {
     setOauthLoading(provider);

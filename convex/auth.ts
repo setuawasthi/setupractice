@@ -201,6 +201,28 @@ export const setPassword = mutation({
     password: v.string(),
   },
   handler: async (ctx, args) => {
-    await ctx.db.patch(args.userId, { updatedAt: Date.now() });
+    await ctx.db.insert("accounts", {
+      userId: args.userId,
+      accountId: args.userId,
+      providerId: "credentials",
+      password: args.password,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    });
+  },
+});
+
+export const verifyPassword = mutation({
+  args: {
+    userId: v.id("users"),
+    password: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const accounts = await ctx.db
+      .query("accounts")
+      .withIndex("by_userId", (q) => q.eq("userId", args.userId))
+      .collect();
+    const creds = accounts.find((a) => a.providerId === "credentials");
+    return creds ? creds.password === args.password : false;
   },
 });

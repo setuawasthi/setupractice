@@ -13,6 +13,7 @@ export default function SignupPage({ onSwitch }) {
 
   const createUser = useMutation(api.auth.createUser);
   const createSession = useMutation(api.auth.createSession);
+  const setPassword = useMutation(api.auth.setPassword);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -25,6 +26,10 @@ export default function SignupPage({ onSwitch }) {
         email,
         emailVerified: false,
       });
+
+      // Store password (simple hash for demo)
+      const hashed = await hashPassword(password);
+      await setPassword({ userId, password: hashed });
 
       const token = Array.from(crypto.getRandomValues(new Uint8Array(32)))
         .map((b) => b.toString(16).padStart(2, "0"))
@@ -44,6 +49,14 @@ export default function SignupPage({ onSwitch }) {
       setIsLoading(false);
     }
   };
+
+  async function hashPassword(pw) {
+    const encoder = new TextEncoder();
+    const data = encoder.encode(pw);
+    const hashBuffer = await crypto.subtle.digest("SHA-256", data);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
+  }
 
   return (
     <div className="min-h-screen w-full bg-[#e5e6e8] dark:bg-[#0f1117] flex items-center justify-center p-4 transition-colors duration-300">
