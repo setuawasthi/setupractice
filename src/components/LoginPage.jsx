@@ -56,6 +56,7 @@ export default function LoginPage({ onSwitch }) {
             text: "signin_with",
             shape: "rectangular",
             width: googleBtnRef.current.offsetWidth || 380,
+            logo_alignment: "center",
           });
         }
       } catch (err) {
@@ -189,7 +190,7 @@ export default function LoginPage({ onSwitch }) {
     <button
       onClick={onClick}
       disabled={oauthLoading}
-      className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+      className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
     >
       {oauthLoading === provider ? (
         <Loader2 size={18} className="animate-spin" />
@@ -216,8 +217,8 @@ export default function LoginPage({ onSwitch }) {
         </div>
 
         {/* Social Login */}
-        <div className="space-y-3 mb-6">
-          <div ref={googleBtnRef} className="w-full flex justify-center" />
+        <div className="grid grid-cols-2 gap-3 mb-6">
+          <div ref={googleBtnRef} className="w-full" />
           <SocialButton provider="github" icon={Github} label="GitHub" onClick={handleGithubOAuth} />
         </div>
 
