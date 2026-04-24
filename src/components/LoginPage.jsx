@@ -41,22 +41,29 @@ export default function LoginPage({ onSwitch }) {
     script.async = true;
     script.defer = true;
     script.onload = () => {
-      if (window.google && googleBtnRef.current) {
-        window.google.accounts.id.initialize({
-          client_id: GOOGLE_CLIENT_ID,
-          callback: handleGoogleCredentialResponse,
-          auto_select: false,
-          cancel_on_tap_outside: true,
-        });
-        window.google.accounts.id.renderButton(googleBtnRef.current, {
-          type: "standard",
-          theme: "outline",
-          size: "large",
-          text: "signin_with",
-          shape: "rectangular",
-          width: googleBtnRef.current.offsetWidth || 380,
-        });
+      try {
+        if (window.google && window.google.accounts && window.google.accounts.id && googleBtnRef.current) {
+          window.google.accounts.id.initialize({
+            client_id: GOOGLE_CLIENT_ID,
+            callback: handleGoogleCredentialResponse,
+            auto_select: false,
+            cancel_on_tap_outside: true,
+          });
+          window.google.accounts.id.renderButton(googleBtnRef.current, {
+            type: "standard",
+            theme: "outline",
+            size: "large",
+            text: "signin_with",
+            shape: "rectangular",
+            width: googleBtnRef.current.offsetWidth || 380,
+          });
+        }
+      } catch (err) {
+        console.error("Google Sign-In initialization failed:", err);
       }
+    };
+    script.onerror = () => {
+      console.error("Failed to load Google Sign-In script");
     };
     document.body.appendChild(script);
   }, []);
