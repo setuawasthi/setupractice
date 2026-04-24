@@ -1,13 +1,14 @@
 import { v } from "convex/values";
 import { query, mutation } from "./_generated/server";
 
-// Query: get all tasks sorted by createdAt desc
+// Query: get all tasks for a specific user sorted by createdAt desc
 export const getTasks = query({
-  args: {},
-  handler: async (ctx) => {
+  args: { userId: v.optional(v.string()) },
+  handler: async (ctx, args) => {
+    if (!args.userId) return [];
     return await ctx.db
       .query("tasks")
-      .withIndex("by_createdAt")
+      .withIndex("by_userId", (q) => q.eq("userId", args.userId))
       .order("desc")
       .collect();
   },
@@ -18,6 +19,7 @@ export const addTask = mutation({
   args: {
     text: v.string(),
     priority: v.optional(v.string()),
+    userId: v.string(),
   },
   handler: async (ctx, args) => {
     return await ctx.db.insert("tasks", {
@@ -25,6 +27,7 @@ export const addTask = mutation({
       completed: false,
       priority: args.priority || "Medium",
       createdAt: Date.now(),
+      userId: args.userId,
     });
   },
 });
@@ -63,13 +66,13 @@ export const changePriority = mutation({
   },
 });
 
-// Mutation: clear all completed tasks
+// Mutation: clear all completed tasks for a user
 export const clearCompleted = mutation({
-  args: {},
-  handler: async (ctx) => {
+  args: { userId: v.string() },
+  handler: async (ctx, args) => {
     const completed = await ctx.db
       .query("tasks")
-      .withIndex("by_completed")
+      .withIndex("by_userId", (q) => q.eq("userId", args.userId))
       .filter((q) => q.eq(q.field("completed"), true))
       .collect();
     for (const task of completed) {

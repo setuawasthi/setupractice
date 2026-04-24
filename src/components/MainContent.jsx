@@ -24,12 +24,12 @@ export default function MainContent({
         <TodoView
           tasks={tasks}
           user={user}
-          onAddTask={(text, priority) => addTask({ text, priority })}
+          onAddTask={(text, priority) => addTask({ text, priority, userId: user?._id })}
           onDeleteTask={(id) => deleteTask({ id })}
           onToggleTask={(id) => toggleTask({ id })}
           onEditTask={(id, text) => editTask({ id, text })}
           onChangePriority={(id, priority) => changePriority({ id, priority })}
-          onClearCompleted={() => clearCompleted()}
+          onClearCompleted={() => clearCompleted({ userId: user?._id })}
           onToggleAI={onToggleAI}
         />
       )}

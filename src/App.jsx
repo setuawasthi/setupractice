@@ -50,7 +50,7 @@ export default function App() {
 }
 
 function AppShell({ user, onLogout }) {
-  const tasks = useQuery(api.tasks.getTasks) || [];
+  const tasks = useQuery(api.tasks.getTasks, { userId: user?._id }) || [];
   const [theme, setTheme] = useState(() => {
     try { return localStorage.getItem('bettertasks-theme') || 'light'; } catch { return 'light'; }
   });
