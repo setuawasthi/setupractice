@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import { Mail, Lock, Github, Chrome, Eye, EyeOff, ArrowRight, Loader2 } from "lucide-react";
@@ -22,7 +22,6 @@ export default function LoginPage({ onSwitch }) {
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [oauthLoading, setOauthLoading] = useState(null); // 'google' | 'github' | null
-  const googleBtnRef = useRef(null);
 
   const createSession = useMutation(api.auth.createSession);
   const createUser = useMutation(api.auth.createUser);
@@ -42,21 +41,12 @@ export default function LoginPage({ onSwitch }) {
     script.defer = true;
     script.onload = () => {
       try {
-        if (window.google && window.google.accounts && window.google.accounts.id && googleBtnRef.current) {
+        if (window.google && window.google.accounts && window.google.accounts.id) {
           window.google.accounts.id.initialize({
             client_id: GOOGLE_CLIENT_ID,
             callback: handleGoogleCredentialResponse,
             auto_select: false,
             cancel_on_tap_outside: true,
-          });
-          window.google.accounts.id.renderButton(googleBtnRef.current, {
-            type: "standard",
-            theme: "outline",
-            size: "large",
-            text: "signin_with",
-            shape: "rectangular",
-            width: googleBtnRef.current.offsetWidth || 380,
-            logo_alignment: "center",
           });
         }
       } catch (err) {
@@ -68,6 +58,12 @@ export default function LoginPage({ onSwitch }) {
     };
     document.body.appendChild(script);
   }, []);
+
+  const handleGoogleClick = () => {
+    if (window.google && window.google.accounts && window.google.accounts.id) {
+      window.google.accounts.id.prompt();
+    }
+  };
 
   const handleGoogleCredentialResponse = async (response) => {
     setOauthLoading("google");
@@ -218,7 +214,7 @@ export default function LoginPage({ onSwitch }) {
 
         {/* Social Login */}
         <div className="grid grid-cols-2 gap-3 mb-6">
-          <div ref={googleBtnRef} className="w-full" />
+          <SocialButton provider="google" icon={Chrome} label="Google" onClick={handleGoogleClick} />
           <SocialButton provider="github" icon={Github} label="GitHub" onClick={handleGithubOAuth} />
         </div>
 
