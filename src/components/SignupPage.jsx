@@ -3,6 +3,23 @@ import { useMutation } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import { Mail, Lock, User, Eye, EyeOff, ArrowRight } from "lucide-react";
 
+function validateEmail(email) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+}
+
+function validatePassword(pw) {
+  if (pw.length < 6) return "Password must be at least 6 characters.";
+  if (pw.length > 128) return "Password must be less than 128 characters.";
+  return null;
+}
+
+function validateName(name) {
+  const trimmed = name.trim();
+  if (trimmed.length < 1) return "Name is required.";
+  if (trimmed.length > 100) return "Name must be less than 100 characters.";
+  return null;
+}
+
 export default function SignupPage({ onSwitch }) {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -18,18 +35,28 @@ export default function SignupPage({ onSwitch }) {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError("");
+
+    const nameError = validateName(name);
+    if (nameError) { setError(nameError); return; }
+
+    if (!validateEmail(email)) {
+      setError("Please enter a valid email address.");
+      return;
+    }
+
+    const pwError = validatePassword(password);
+    if (pwError) { setError(pwError); return; }
+
     setIsLoading(true);
 
     try {
       const userId = await createUser({
-        name,
-        email,
+        name: name.trim(),
+        email: email.trim().toLowerCase(),
         emailVerified: false,
       });
 
-      // Store password (simple hash for demo)
-      const hashed = await hashPassword(password);
-      await savePassword({ userId, password: hashed });
+      await savePassword({ userId, password });
 
       const token = Array.from(crypto.getRandomValues(new Uint8Array(32)))
         .map((b) => b.toString(16).padStart(2, "0"))
@@ -44,19 +71,15 @@ export default function SignupPage({ onSwitch }) {
       localStorage.setItem("bettertasks-session", token);
       window.location.reload();
     } catch (err) {
-      setError("Something went wrong. Please try again.");
+      console.error("Signup error:", err);
+      setError(err.message?.includes("already registered")
+        ? "An account with this email already exists."
+        : "Something went wrong. Please try again."
+      );
     } finally {
       setIsLoading(false);
     }
   };
-
-  async function hashPassword(pw) {
-    const encoder = new TextEncoder();
-    const data = encoder.encode(pw);
-    const hashBuffer = await crypto.subtle.digest("SHA-256", data);
-    const hashArray = Array.from(new Uint8Array(hashBuffer));
-    return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
-  }
 
   return (
     <div className="min-h-screen w-full bg-[#e5e6e8] dark:bg-[#0f1117] flex items-center justify-center p-4 transition-colors duration-300">
@@ -71,7 +94,7 @@ export default function SignupPage({ onSwitch }) {
         </div>
 
         {/* Form */}
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit} className="space-y-4" noValidate>
           <div>
             <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1.5 ml-0.5">Full Name</label>
             <div className="relative">
@@ -82,6 +105,8 @@ export default function SignupPage({ onSwitch }) {
                 onChange={(e) => setName(e.target.value)}
                 placeholder="John Doe"
                 required
+                autoComplete="name"
+                maxLength={100}
                 className="w-full h-11 pl-10 pr-4 text-sm text-gray-800 dark:text-gray-100 bg-gray-50 dark:bg-gray-800/60 rounded-xl placeholder:text-gray-400 dark:placeholder:text-gray-500 outline-none transition-all focus:bg-white dark:focus:bg-gray-800 focus:ring-2 focus:ring-primary-200/60 dark:focus:ring-primary-800/40 border border-transparent focus:border-primary-200 dark:focus:border-primary-800"
               />
             </div>
@@ -97,6 +122,7 @@ export default function SignupPage({ onSwitch }) {
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="you@example.com"
                 required
+                autoComplete="email"
                 className="w-full h-11 pl-10 pr-4 text-sm text-gray-800 dark:text-gray-100 bg-gray-50 dark:bg-gray-800/60 rounded-xl placeholder:text-gray-400 dark:placeholder:text-gray-500 outline-none transition-all focus:bg-white dark:focus:bg-gray-800 focus:ring-2 focus:ring-primary-200/60 dark:focus:ring-primary-800/40 border border-transparent focus:border-primary-200 dark:focus:border-primary-800"
               />
             </div>
@@ -112,6 +138,9 @@ export default function SignupPage({ onSwitch }) {
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="••••••••"
                 required
+                autoComplete="new-password"
+                minLength={6}
+                maxLength={128}
                 className="w-full h-11 pl-10 pr-10 text-sm text-gray-800 dark:text-gray-100 bg-gray-50 dark:bg-gray-800/60 rounded-xl placeholder:text-gray-400 dark:placeholder:text-gray-500 outline-none transition-all focus:bg-white dark:focus:bg-gray-800 focus:ring-2 focus:ring-primary-200/60 dark:focus:ring-primary-800/40 border border-transparent focus:border-primary-200 dark:focus:border-primary-800"
               />
               <button
@@ -122,10 +151,11 @@ export default function SignupPage({ onSwitch }) {
                 {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
               </button>
             </div>
+            <p className="text-[10px] text-gray-400 mt-1 ml-0.5">At least 6 characters</p>
           </div>
 
           {error && (
-            <p className="text-xs text-red-500 font-medium">{error}</p>
+            <p className="text-xs text-red-500 font-medium" role="alert">{error}</p>
           )}
 
           <button

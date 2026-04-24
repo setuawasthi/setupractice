@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import { Mail, Lock, Github, Chrome, Eye, EyeOff, ArrowRight, Loader2 } from "lucide-react";
@@ -15,17 +15,26 @@ function decodeJwt(token) {
   }
 }
 
+function validateEmail(email) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+}
+
+function validatePassword(pw) {
+  return pw.length >= 6;
+}
+
 export default function LoginPage({ onSwitch }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  const [oauthLoading, setOauthLoading] = useState(null); // 'google' | 'github' | null
+  const [oauthLoading, setOauthLoading] = useState(null);
 
   const createSession = useMutation(api.auth.createSession);
   const createUser = useMutation(api.auth.createUser);
   const verifyPassword = useMutation(api.auth.verifyPassword);
+  const checkRateLimit = useMutation(api.auth.checkRateLimit);
   const userByEmail = useQuery(
     api.auth.findUserByEmail,
     email ? { email } : "skip"
@@ -41,7 +50,7 @@ export default function LoginPage({ onSwitch }) {
     script.defer = true;
     script.onload = () => {
       try {
-        if (window.google && window.google.accounts && window.google.accounts.id) {
+        if (window.google?.accounts?.id) {
           window.google.accounts.id.initialize({
             client_id: GOOGLE_CLIENT_ID,
             callback: handleGoogleCredentialResponse,
@@ -53,40 +62,66 @@ export default function LoginPage({ onSwitch }) {
         console.error("Google Sign-In initialization failed:", err);
       }
     };
-    script.onerror = () => {
-      console.error("Failed to load Google Sign-In script");
-    };
+    script.onerror = () => console.error("Failed to load Google Sign-In script");
     document.body.appendChild(script);
   }, []);
 
-  const handleGoogleClick = () => {
-    if (window.google && window.google.accounts && window.google.accounts.id) {
+  const handleGoogleClick = useCallback(() => {
+    if (window.google?.accounts?.id) {
       window.google.accounts.id.prompt();
     }
-  };
+  }, []);
 
-  const handleGoogleCredentialResponse = async (response) => {
+  const handleGoogleCredentialResponse = useCallback(async (response) => {
     setOauthLoading("google");
     setError("");
     try {
       const payload = decodeJwt(response.credential);
-      if (!payload) throw new Error("Invalid Google token");
+      if (!payload?.email) throw new Error("Invalid Google token");
 
       const name = payload.name || payload.given_name || "Google User";
       const email = payload.email;
       const image = payload.picture || null;
 
-      if (!email) throw new Error("No email from Google");
+      // Check if user exists by email
+      let userId;
+      try {
+        const existingUser = await fetch(
+          `${import.meta.env.VITE_CONVEX_URL}/api/query`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              path: "auth.findUserByEmail",
+              args: { email },
+            }),
+          }
+        ).then(r => r.json()).catch(() => null);
 
-      // Try to find existing user or create new one
-      const existingUser = await fetch("/api/placeholder", { method: "HEAD" }).catch(() => null);
-      // We'll create a new user since we don't have a direct way to query by email in mutation context
-      const userId = await createUser({
-        name,
-        email,
-        emailVerified: true,
-        image,
-      });
+        if (existingUser?.value?._id) {
+          userId = existingUser.value._id;
+        } else {
+          userId = await createUser({ name, email, emailVerified: true, image });
+        }
+      } catch {
+        // Fallback: try creating, if duplicate it will error
+        try {
+          userId = await createUser({ name, email, emailVerified: true, image });
+        } catch {
+          // User likely exists, query again
+          const existing = await fetch(
+            `${import.meta.env.VITE_CONVEX_URL}/api/query`,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ path: "auth.findUserByEmail", args: { email } }),
+            }
+          ).then(r => r.json());
+          userId = existing?.value?._id;
+        }
+      }
+
+      if (!userId) throw new Error("Could not find or create user");
 
       const token = Array.from(crypto.getRandomValues(new Uint8Array(32)))
         .map((b) => b.toString(16).padStart(2, "0"))
@@ -101,25 +136,43 @@ export default function LoginPage({ onSwitch }) {
       localStorage.setItem("bettertasks-session", token);
       window.location.reload();
     } catch (err) {
+      console.error("Google auth error:", err);
       setError("Google sign-in failed. Please try again.");
       setOauthLoading(null);
     }
-  };
+  }, [createUser, createSession]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError("");
+    
+    if (!validateEmail(email)) {
+      setError("Please enter a valid email address.");
+      return;
+    }
+    if (!validatePassword(password)) {
+      setError("Password must be at least 6 characters.");
+      return;
+    }
+
     setIsLoading(true);
 
     try {
+      // Rate limit check
+      const rateLimit = await checkRateLimit({ email });
+      if (!rateLimit.allowed) {
+        setError(`Too many attempts. Please try again in ${rateLimit.retryAfter} seconds.`);
+        setIsLoading(false);
+        return;
+      }
+
       if (!userByEmail) {
         setError("No account found with this email.");
         setIsLoading(false);
         return;
       }
 
-      const hashed = await hashPassword(password);
-      const valid = await verifyPassword({ userId: userByEmail._id, password: hashed });
+      const valid = await verifyPassword({ userId: userByEmail._id, password });
       if (!valid) {
         setError("Incorrect password.");
         setIsLoading(false);
@@ -139,19 +192,12 @@ export default function LoginPage({ onSwitch }) {
       localStorage.setItem("bettertasks-session", token);
       window.location.reload();
     } catch (err) {
+      console.error("Login error:", err);
       setError("Invalid credentials.");
     } finally {
       setIsLoading(false);
     }
   };
-
-  async function hashPassword(pw) {
-    const encoder = new TextEncoder();
-    const data = encoder.encode(pw);
-    const hashBuffer = await crypto.subtle.digest("SHA-256", data);
-    const hashArray = Array.from(new Uint8Array(hashBuffer));
-    return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
-  }
 
   const handleGithubOAuth = async () => {
     setOauthLoading("github");
@@ -226,7 +272,7 @@ export default function LoginPage({ onSwitch }) {
         </div>
 
         {/* Form */}
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit} className="space-y-4" noValidate>
           <div>
             <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1.5 ml-0.5">Email</label>
             <div className="relative">
@@ -237,6 +283,7 @@ export default function LoginPage({ onSwitch }) {
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="you@example.com"
                 required
+                autoComplete="email"
                 className="w-full h-11 pl-10 pr-4 text-sm text-gray-800 dark:text-gray-100 bg-gray-50 dark:bg-gray-800/60 rounded-xl placeholder:text-gray-400 dark:placeholder:text-gray-500 outline-none transition-all focus:bg-white dark:focus:bg-gray-800 focus:ring-2 focus:ring-primary-200/60 dark:focus:ring-primary-800/40 border border-transparent focus:border-primary-200 dark:focus:border-primary-800"
               />
             </div>
@@ -247,11 +294,14 @@ export default function LoginPage({ onSwitch }) {
             <div className="relative">
               <Lock size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" />
               <input
-                type={showPassword ? "text" : "password"}
+                type={showPassword ? "text" : "password"
+                }
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="••••••••"
                 required
+                autoComplete="current-password"
+                minLength={6}
                 className="w-full h-11 pl-10 pr-10 text-sm text-gray-800 dark:text-gray-100 bg-gray-50 dark:bg-gray-800/60 rounded-xl placeholder:text-gray-400 dark:placeholder:text-gray-500 outline-none transition-all focus:bg-white dark:focus:bg-gray-800 focus:ring-2 focus:ring-primary-200/60 dark:focus:ring-primary-800/40 border border-transparent focus:border-primary-200 dark:focus:border-primary-800"
               />
               <button
@@ -265,7 +315,7 @@ export default function LoginPage({ onSwitch }) {
           </div>
 
           {error && (
-            <p className="text-xs text-red-500 font-medium">{error}</p>
+            <p className="text-xs text-red-500 font-medium" role="alert">{error}</p>
           )}
 
           <button
