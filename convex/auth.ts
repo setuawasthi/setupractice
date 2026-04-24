@@ -282,6 +282,14 @@ export const setPassword = mutation({
   },
 });
 
+async function sha256(password: string): Promise<string> {
+  const encoder = new TextEncoder();
+  const data = encoder.encode(password);
+  const hashBuffer = await crypto.subtle.digest("SHA-256", data);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
 export const verifyPassword = mutation({
   args: {
     userId: v.id("users"),
@@ -294,7 +302,22 @@ export const verifyPassword = mutation({
       .collect();
     const creds = accounts.find((a) => a.providerId === "credentials");
     if (!creds || !creds.password) return false;
-    return await pbkdf2Verify(args.password, creds.password);
+    
+    // Try PBKDF2 first (new format)
+    if (creds.password.includes(":")) {
+      return await pbkdf2Verify(args.password, creds.password);
+    }
+    
+    // Fall back to SHA-256 (old format) and migrate to PBKDF2
+    const oldHash = await sha256(args.password);
+    if (oldHash === creds.password) {
+      // Migrate to secure PBKDF2
+      const newHash = await pbkdf2Hash(args.password);
+      await ctx.db.patch(creds._id, { password: newHash, updatedAt: Date.now() });
+      return true;
+    }
+    
+    return false;
   },
 });
 
